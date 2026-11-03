@@ -1,1 +1,32 @@
+name: Free Agro Scraper
 
+on:
+  workflow_dispatch: # İstediğin zaman manuel tetikleyebilmen için
+
+jobs:
+  run-scraper:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install dependencies
+        run: |
+          pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Run Scraper
+        run: python scraper.py
+
+      - name: Upload Excel files to repository
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git add *.xlsx
+          git commit -m "Türkiye 7 bölge güncel Excel raporları eklendi [skip ci]" || exit 0
+          git push
