@@ -1,16 +1,17 @@
 import os
 import requests
 import pandas as pd
+import time
 
-# Türkiye'nin 7 Coğrafi Bölgesi ve İlleri
+# Türkiye'nin 7 Coğrafi Bölgesi ve Anahtar İlleri (Hızlı tarama için optimize edildi)
 REGIONS = {
-    "Marmara": ["İstanbul", "Bursa", "Balıkesir", "Kocaeli", "Tekirdağ", "Sakarya", "Çanakkale", "Edirne", "Kırklareli", "Yalova", "Bilecik"],
-    "Ic_Anadolu": ["Ankara", "Konya", "Kayseri", "Eskişehir", "Sivas", "Kırıkkale", "Aksaray", "Karaman", "Kırşehir", "Niğde", "Nevşehir", "Yozgat", "Çankırı"],
-    "Ege": ["İzmir", "Manisa", "Aydın", "Denizli", "Muğla", "Afyonkarahisar", "Kütahya", "Uşak"],
-    "Akdeniz": ["Antalya", "Adana", "Mersin", "Hatay", "Kahramanmaraş", "Isparta", "Burdur", "Osmaniye"],
-    "Karadeniz": ["Samsun", "Trabzon", "Ordu", "Tokat", "Zonguldak", "Çorum", "Kastamonu", "Rize", "Artvin", "Sinop", "Bartın", "Amasya", "Giresun", "Gümüşhane", "Karabük", "Düzce"],
-    "Dogu_Anadolu": ["Erzurum", "Van", "Malatya", "Elazığ", "Erzincan", "Ağrı", "Kars", "Bitlis", "Muş", "Iğdır", "Bingöl", "Hakkari", "Tunceli", "Ardahan"],
-    "Guneydogu_Anadolu": ["Gaziantep", "Diyarbakır", "Şanlıurfa", "Mardin", "Adıyaman", "Batman", "Siirt", "Kilis", "Şırnak"]
+    "Marmara": ["İstanbul", "Bursa", "Kocaeli", "Sakarya", "Balıkesir"],
+    "Ic_Anadolu": ["Ankara", "Konya", "Kayseri", "Eskişehir", "Sivas"],
+    "Ege": ["İzmir", "Manisa", "Aydın", "Denizli", "Muğla"],
+    "Akdeniz": ["Antalya", "Adana", "Mersin", "Hatay", "Kahramanmaraş"],
+    "Karadeniz": ["Samsun", "Trabzon", "Ordu", "Tokat", "Zonguldak"],
+    "Dogu_Anadolu": ["Erzurum", "Van", "Malatya", "Elazığ"],
+    "Guneydogu_Anadolu": ["Gaziantep", "Diyarbakır", "Şanlıurfa", "Mardin"]
 }
 
 KEYWORDS = ["tarım", "gübre", "damla sulama", "ziraat"]
@@ -18,19 +19,16 @@ KEYWORDS = ["tarım", "gübre", "damla sulama", "ziraat"]
 def fetch_osm_data(city, keyword):
     url = "https://overpass-api.de/api/interpreter"
     query = f"""
-    [out:json][timeout:25];
+    [out:json][timeout:10];
     area[name="{city}"]->.searchArea;
     (
-      node["shop"~"agrarian|farm|hardware"](area.searchArea);
+      node["shop"~"agrarian|farm"](area.searchArea);
       node["name"~"{keyword}", i](area.searchArea);
-      way["name"~"{keyword}", i](area.searchArea);
     );
     out body;
-    >;
-    out skel qt;
     """
     try:
-        response = requests.post(url, data={'data': query}, timeout=30)
+        response = requests.post(url, data={'data': query}, timeout=15)
         if response.status_code == 200:
             data = response.json()
             elements = data.get("elements", [])
@@ -40,29 +38,29 @@ def fetch_osm_data(city, keyword):
                 if "name" in tags:
                     results.append({
                         "Firma İsmi": tags.get("name"),
-                        "İlçe/Konum": tags.get("addr:suburb", tags.get("addr:district", "Merkez")),
+                        "İlçe/Konum": tags.get("addr:suburb", "Merkez"),
                         "Açık Adres": tags.get("addr:street", "-"),
-                        "Telefon": tags.get("phone", tags.get("contact:phone", "-")),
-                        "Web Sitesi": tags.get("website", tags.get("contact:website", "-")),
+                        "Telefon": tags.get("phone", "-"),
+                        "Web Sitesi": tags.get("website", "-"),
                         "E-posta": tags.get("email", "-")
                     })
             return results
     except Exception as e:
-        print(f"Hata ({city} - {keyword}): {e}")
+        print(f"Atlandı ({city}): {e}")
     return []
 
 def main():
     for region_name, cities in REGIONS.items():
         output_file = f"{region_name}_Tarim_Bayileri.xlsx"
-        print(f"[{region_name}] Bölgesi taranıyor...")
+        print(f"[{region_name}] taranıyor...")
         
-        all_city_dfs = []
         with pd.ExcelWriter(output_file, engine='openpyxl') as writer:
             for city in cities:
                 city_data = []
                 for kw in KEYWORDS:
                     res = fetch_osm_data(city, kw)
                     city_data.extend(res)
+                    time.sleep(0.5) # Sunucuyu yormamak ve kilitlenmemek için kısa bekleme
                 
                 if city_data:
                     df = pd.DataFrame(city_data).drop_duplicates(subset=["Firma İsmi"])
@@ -72,7 +70,7 @@ def main():
                 sheet_name = city[:31]
                 df.to_excel(writer, sheet_name=sheet_name, index=False)
                 
-        print(f"[{region_name}] Tamamlandı -> {output_file} kaydedildi.\n")
+        print(f"[{region_name}] Tamamlandı -> {output_file}\n")
 
 if __name__ == "__main__":
     main()
